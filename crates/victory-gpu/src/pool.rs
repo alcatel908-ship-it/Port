@@ -38,12 +38,25 @@ const STAGING_KEPT: usize = 8;
 /// How many are kept now.
 static SPARES: AtomicUsize = AtomicUsize::new(SPARE);
 
+/// Opt-in early sweep of empty texture blocks under local memory pressure.
+/// Adapted from VInAMD 3de840c01708; keep the baseline default for A/B.
+fn reclaim_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("VICTORY_POOL_RECLAIM").is_some_and(|v| v == "1"))
+}
+
 /// Sets how many empty blocks stay, by the card's memory (budget and use):
 /// [`SPARE_KEPT`] below 85 % ([`crate::host::keep_freed`]), else [`SPARE`].
 /// Asked once a second.
 pub(crate) fn room(memory: Option<[u64; 4]>) {
     if !crate::residency::on() {
-        SPARES.store(spares(memory, crate::host::keep_freed()), Ordering::Relaxed);
+        let limit = spares(memory, crate::host::keep_freed());
+        SPARES.store(limit, Ordering::Relaxed);
+        if reclaim_on() && limit < SPARE_KEPT
+            && let Ok(mut pool) = TEXTURES.try_lock()
+        {
+            pool.reclaim(now(), limit, true);
+        }
         return;
     }
     // (`VICTORY_RESIDENCY=1`, codec-d/cool_fox c64fc9b4/e94d277a: fewer
@@ -936,4 +949,22 @@ mod tests {
             assert!(host.device.GetDeviceRemovedReason().is_ok());
         }
     }
+
+    #[test]
+    fn port_sweep_reclaims_empty_blocks_without_another_allocation() {
+        let mut pool: Pool<u32> = Pool::new(SPARE_KEPT);
+        let mut pieces = Vec::new();
+        for n in 1u32..=5 {
+            let (first, _, _) = pool.take(BLOCK / 2, 512, 0, || Some(n)).unwrap();
+            let (second, _, _) = pool.take(BLOCK / 2, 512, 0, || unreachable!()).unwrap();
+            pieces.extend([first, second]);
+        }
+        assert_eq!(pool.blocks(), 5);
+        for piece in pieces {
+            pool.give(piece, 0);
+        }
+        pool.reclaim(REST + 1, SPARE, true);
+        assert_eq!(pool.blocks(), SPARE);
+    }
+
 }
