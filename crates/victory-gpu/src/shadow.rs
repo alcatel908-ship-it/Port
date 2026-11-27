@@ -3133,6 +3133,11 @@ impl Shadow {
         self.watched.load(Ordering::Relaxed) == NOT_WATCHED
     }
 
+    /// True only when the last refresh established write-watch support.
+    pub(crate) fn watched_known(&self) -> bool {
+        matches!(self.watched.load(Ordering::Relaxed), 1 | GUARDED)
+    }
+
     /// Whether a submission asks the kernel about the copy's ranges ahead:
     /// not of memory that is not watched, nor of view memory, which the
     /// kernel would refuse (and with it the ranges asked about together).

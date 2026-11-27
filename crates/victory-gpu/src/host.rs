@@ -334,35 +334,6 @@ pub(crate) fn mapped(device: &ID3D12Device) -> windows::core::Result<()> {
     Ok(())
 }
 
-/// Which lines of ours make shared buffers ([`Host::shared_buffer`]), how
-/// many and how many bytes: each is memory of its own that is waited for
-/// until it is mapped ([`mapped`]), and a run made 864,839 of them in ten
-/// minutes (10 GB, 12 KB each). The busiest lines are logged every 20,000.
-#[cfg(feature = "diagnostics")]
-fn shared_buffer_caller(at: &'static std::panic::Location<'static>, size: u64) {
-    static TRACE: OnceLock<bool> = OnceLock::new();
-    if !*TRACE.get_or_init(|| std::env::var_os("VICTORY_SHARED_BUFFER_TRACE").is_some_and(|v| v == "1")) {
-        return;
-    }
-    static BY: Mutex<Option<std::collections::HashMap<(&'static str, u32), (u64, u64)>>> = Mutex::new(None);
-    let mut by = BY.lock().unwrap_or_else(|e| e.into_inner());
-    let map = by.get_or_insert_with(Default::default);
-    let entry = map.entry((at.file(), at.line())).or_default();
-    entry.0 += 1;
-    entry.1 += size;
-    let n: u64 = map.values().map(|v| v.0).sum();
-    if n.is_multiple_of(20_000) {
-        let mut top: Vec<_> = map.iter().map(|(k, v)| (*k, *v)).collect();
-        top.sort_by_key(|t| std::cmp::Reverse(t.1.0));
-        let said: Vec<String> = top
-            .iter()
-            .take(8)
-            .map(|((file, line), (count, bytes))| format!("{file}:{line} {count} ({} MB)", bytes >> 20))
-            .collect();
-        tracing::info!("shared buffers made so far by line ({n} in all): {}", said.join(", "));
-    }
-}
-
 /// Times, microseconds and the longest of [`mapped`].
 static MAPPED: [std::sync::atomic::AtomicU64; 3] = [const { std::sync::atomic::AtomicU64::new(0) }; 3];
 
@@ -3817,6 +3788,7 @@ impl RelayBack {
         land::spent(land::stat::BACK, merging);
         for ((_, from, to), written) in self.work.iter().zip(written) {
             COPY_BACK[1].fetch_add(written, Ordering::Relaxed);
+            crate::wc::back(*from, written);
             #[cfg(feature = "diagnostics")]
             crate::copystat::compared(*from, to - from, written as usize);
             let _ = (from, to);
@@ -3967,6 +3939,8 @@ pub(crate) mod aside;
 pub(crate) mod awake;
 mod card_steps;
 mod fetchguard;
+#[cfg(feature = "diagnostics")]
+mod shared_trace;
 #[cfg_attr(not(feature = "diagnostics"), allow(dead_code))]
 pub(crate) mod indirects;
 mod panel;
@@ -4198,6 +4172,7 @@ fn hand_back(back: &[Declared]) {
         for ((shadow, from, to), found) in work.iter().zip(found) {
             let written = shadow.copy_back_with(*from, to - from, Some(found));
             COPY_BACK[1].fetch_add(written as u64, Ordering::Relaxed);
+            crate::wc::back(*from, written as u64);
             #[cfg(feature = "diagnostics")]
             crate::copystat::compared(*from, to - from, written);
         }
@@ -4230,6 +4205,7 @@ fn hand_back(back: &[Declared]) {
         for (from, to) in spans {
             let written = shadow.copy_back(from, to - from);
             COPY_BACK[1].fetch_add(written as u64, Ordering::Relaxed);
+            crate::wc::back(from, written as u64);
             #[cfg(feature = "diagnostics")]
             crate::copystat::compared(from, to - from, written);
         }
@@ -5158,7 +5134,9 @@ impl Host {
                     // SAFETY: the mapping of the fetched bytes, `total` of
                     // them; the copy into it has run, and the next waits
                     // for this call.
-                    put.fetch_add(unsafe { run[0].0.land_card(&addressed, after, &mut notes) }, Ordering::Relaxed);
+                    let landed = unsafe { run[0].0.land_card(&addressed, after, &mut notes) };
+                    crate::wc::back(run[0].0.span().0 as usize + run[0].1, landed);
+                    put.fetch_add(landed, Ordering::Relaxed);
                 }
                 notes.flush();
                 land::spent(land::stat::CARD_ALL, working);
@@ -5177,6 +5155,7 @@ impl Host {
                 let gpu = unsafe { std::slice::from_raw_parts((data + *at as usize) as *const u8, hi - lo) };
                 let merged = shadow.card_merge_relay(*lo, gpu, after, &mut title);
                 shadow.walls_merged(gpu.len(), merged);
+                crate::wc::back(shadow.span().0 as usize + *lo, merged as u64);
                 written += merged as u64;
             }
         }
@@ -5471,6 +5450,7 @@ impl Host {
         for (r, written) in plan.ranges.iter().zip(written) {
             COPY_BACK[1].fetch_add(written as u64, Ordering::Relaxed);
             let (from, to) = r.declared;
+            crate::wc::back(from, written as u64);
             #[cfg(feature = "diagnostics")]
             crate::copystat::compared(from, to - from, written);
             let _ = (from, to);
@@ -6040,6 +6020,16 @@ impl Host {
             shadow.writing(*at, *len);
         }
         let declared = declared_writes(runs);
+        if crate::wc::probe() {
+            for (shadow, spans) in &declared {
+                for &(from, to) in spans {
+                    crate::wc::candidate(from, to.saturating_sub(from), shadow.carded(), shadow.watched_known());
+                }
+            }
+            for (shadow, at, len) in &picked.written {
+                crate::wc::candidate(*at, *len, shadow.carded(), shadow.watched_known());
+            }
+        }
         let card = self.card_before(&declared, &picked, flown);
         // The sends are taken: from here on the references hold what the
         // copies in the lists put.
@@ -7793,6 +7783,7 @@ impl HostList {
                     if wide_fills() {
                         batch.fills.push((dst, src, len));
                         bytes += len as u64;
+                        crate::wc::up(src, len as u64);
                         continue;
                     }
                     let started = std::time::Instant::now();
@@ -7879,6 +7870,15 @@ impl HostList {
             };
             us += started.elapsed();
             bytes += copied as u64;
+            if crate::wc::on() {
+                let at = match step {
+                    &Step::Copy(dst, ..) => dst,
+                    &Step::Fill(_, src, ..) => src,
+                    Step::Placed(p) => p.src,
+                    _ => 0,
+                };
+                crate::wc::up(at, copied as u64);
+            }
         }
         PREPARING[0].fetch_add(us.as_micros() as u64, Ordering::Relaxed);
         PREPARING[1].fetch_add(bytes, Ordering::Relaxed);
@@ -8577,6 +8577,7 @@ impl Batch {
         let started = std::time::Instant::now();
         let _one = crate::timeline::span("a copy's refresh");
         let copied = shadow.update(from, to - from);
+        crate::wc::up(from, copied as u64);
         let us = started.elapsed().as_micros() as u64;
         #[cfg(feature = "diagnostics")]
         crate::copystat::range(from, to - from, us, 0);
@@ -9482,6 +9483,7 @@ impl Meter {
             let [back_ms, back_mb] = [0, 1].map(|i| {
                 COPY_BACK[i].swap(0, Ordering::Relaxed) as f64 / [1e3, 1e6][i] / frames
             });
+            let wc_sample = crate::wc::take(frames);
             let dropped = crate::draw::take_dropped() as f64 / frames;
             let indirect = crate::list::take_indirect() as f64 / frames;
             let mesh_largest = MESH_GROUPS[0].swap(0, Ordering::Relaxed);
@@ -9658,6 +9660,7 @@ impl Meter {
                         per_frame(6) / 1e3
                     );
                 }
+                crate::wc::log(wc_sample);
                 tracing::info!(
                     "{fps:.1} fps, {ms:.1} ms/frame ({cpu:.1} preparing: copies {copy_ms:.1} ms \
                      {copy_mb:.1} MB, textures {texture_ms:.1} ms {texture_mb:.1} MB; {gpu:.1} on the \
@@ -10246,7 +10249,7 @@ impl Host {
         MADE[2].fetch_add(1, Ordering::Relaxed);
         MADE[3].fetch_add(size, Ordering::Relaxed);
         #[cfg(feature = "diagnostics")]
-        shared_buffer_caller(std::panic::Location::caller(), size);
+        shared_trace::shared_buffer_caller(std::panic::Location::caller(), size);
         let heap = D3D12_HEAP_PROPERTIES {
             Type: D3D12_HEAP_TYPE_CUSTOM,
             CPUPageProperty: D3D12_CPU_PAGE_PROPERTY_WRITE_BACK,
