@@ -4513,6 +4513,8 @@ impl Host {
         if !crate::shadow::cards() {
             return None;
         }
+        // Hazards must survive independently of the readback plan.
+        let writers = (relay() && relay_copy()).then(|| fetchguard::writer_ids(declared, picked));
         // The ranges this submission's shaders may write, per copy.
         let declared: Vec<Declared> = declared.iter().filter(|(shadow, _)| shadow.carded()).cloned().collect();
         let declared = if crate::picked::lands() { crate::picked::with(declared, &picked.written) } else { declared };
@@ -4532,7 +4534,7 @@ impl Host {
         let gathering = crate::timeline::span("copies in the card's memory: what changed");
         let mut dirty = crate::shadow::card_dirty(sent_as);
         gathering.end();
-        if declared.is_empty() && dirty.is_empty() && looked.is_empty() {
+        if declared.is_empty() && dirty.is_empty() && looked.is_empty() && writers.as_ref().is_none_or(Vec::is_empty) {
             return None;
         }
         let mut work = CARD_WORK.lock().unwrap_or_else(|e| e.into_inner());
@@ -4555,9 +4557,9 @@ impl Host {
         // With the fetch on the copy queue: counted before anything of this
         // submission goes to the drawing queue, which waits here for a fetch
         // reading one of these copies ([`fetchguard`]).
-        let writes = (relay() && relay_copy()).then(|| {
-            let copies = declared.iter().map(|d| d.0.id()).chain(looked.iter().map(|l| l.0.id())).chain(dirty.iter().map(|d| d.0.id()));
-            fetchguard::writing(&self.queue, copies.collect())
+        let writes = writers.map(|mut ids| {
+            ids.extend(dirty.iter().map(|d| d.0.id()));
+            fetchguard::writing(&self.queue, ids)
         });
         let mut used: Vec<(bool, Prelude)> = Vec::new();
         let mut looks = None;

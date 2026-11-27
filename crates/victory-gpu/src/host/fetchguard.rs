@@ -81,6 +81,22 @@ impl Drop for Writes {
     }
 }
 
+/// GPU hazards come from the complete submission, not the ranges selected
+/// for comparison or copy-back. Include picked writes even if the picked
+/// policy does not land them, and preserve the conservative looked-at set.
+pub(super) fn writer_ids(declared: &[super::Declared], picked: &crate::picked::Ranges) -> Vec<u64> {
+    declared.iter().filter(|(shadow, _)| shadow.carded()).map(|(shadow, _)| shadow.id())
+        .chain(picked.written.iter().map(|(shadow, _, _)| shadow.id()))
+        .chain(picked.looked.iter().map(|(shadow, _, _)| shadow.id()))
+        .collect()
+}
+
+/// True when a fetch touches a writer other than the flights being landed.
+/// This decision is independent of whether the writer has readback ranges.
+fn has_other_writer(copies: &[u64], writers: &HashMap<u64, u32>, landing: &HashMap<u64, u32>) -> bool {
+    copies.iter().any(|id| writers.get(id).copied().unwrap_or(0) > landing.get(id).copied().unwrap_or(0))
+}
+
 /// A submission is about to write `copies` on the card: counted, and if a
 /// fetch on the copy queue is reading one of them, `drawing` waits for it
 /// before anything sent to it after this call.
@@ -128,9 +144,7 @@ pub(super) fn may_copy<'a>(
     }
     let mut guard = GUARD.lock().unwrap_or_else(|e| e.into_inner());
     let guard = guard.get_or_insert_with(Guard::default);
-    let others = copies
-        .iter()
-        .any(|id| guard.writers.get(id).copied().unwrap_or(0) > ours.get(id).copied().unwrap_or(0));
+    let others = has_other_writer(&copies, &guard.writers, &ours);
     if others {
         STATS[1].fetch_add(1, Relaxed);
         return false;
@@ -157,6 +171,18 @@ pub(super) fn fetched(value: u64) {
 mod tests {
     use super::*;
     use windows::Win32::Graphics::Direct3D12::D3D12_FENCE_FLAG_NONE;
+
+    #[test]
+    fn writer_without_readback_still_blocks_copy_queue() {
+        let writers = HashMap::from([(7, 2), (9, 1)]);
+        let landing = HashMap::from([(7, 1)]);
+        // The second writer of 7 and the writer of 9 have no readback
+        // ranges in the current landing set.
+        assert!(has_other_writer(&[7], &writers, &landing));
+        assert!(has_other_writer(&[9], &writers, &landing));
+        assert!(!has_other_writer(&[11], &writers, &landing));
+        assert!(!has_other_writer(&[7], &writers, &HashMap::from([(7, 2)])));
+    }
 
     /// Counts come and go with the submissions; a fetch of a copy a
     /// submission in the air writes is refused, of one only landing
