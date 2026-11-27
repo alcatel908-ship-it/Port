@@ -1,191 +1,154 @@
-# VIctory on an RX 7900 XTX
+# Port
 
-A fork of [VIctory](https://github.com/Marvisak/VIctory), a compatibility layer
-that runs an Xbox Series title natively on Windows from files the user supplies.
+**Port — проект оптимизации VIctory для Windows x64, с приоритетом AMD RDNA 3, Zen 3 и эффективного использования памяти.**
 
-## The goal
+Port — исследовательский проект по оптимизации слоя совместимости Xbox Series → Windows / Direct3D 12. Мы изучаем реализации VIctory и других проектов, переносим совместимые улучшения, адаптируем их под целевую конфигурацию и проверяем корректность работы.
 
-**A stable 30 fps or more without ray tracing, then as high a frame rate and as
-low frame times as the PC allows**, on an AMD RX 7900 XTX first and on PCs with
-32 GB (later 16 GB) of RAM.
+*English summary: Port is an experimental VIctory fork focused on RDNA 3, Zen 3, memory efficiency and reproducible performance testing. It contains no game files or proprietary game assets. The development branches are not validated releases.*
 
-The way there is **porting, not emulating**: patching the title's renderer so it
-behaves the way a PC renderer does, rather than having the layer watch and copy
-the console's shared memory every frame. Shaders are translated ahead of time
-into a versioned store that is kept between builds. Ray tracing stays optional
-and off by default. The picture comes after the frame rate: texture pop-in and
-lighting that is too bright or too dark when walking indoors are next in line.
+[Актуальные исходники](https://github.com/alcatel908-ship-it/Port/tree/port-addition-2026-11-27_07-14-UTC) · [Последнее дополнение (PR #5)](https://github.com/alcatel908-ship-it/Port/pull/5) · [Все дополнения](https://github.com/alcatel908-ship-it/Port/pulls) · [Исходный README и результаты upstream](https://github.com/alcatel908-ship-it/Port/blob/4eb6cfdf9e61cb112f1f811344ec0dd309eddd6c/README.md)
 
-**This repository contains no game files, code or assets.** You need your own
-copy of the game. It is not affiliated with or endorsed by the game's developer
-or publisher.
+> **Статус:** активная экспериментальная разработка. Накопительная версия включает пять дополнений; компиляция, аппаратные тесты и игровой FPS пока не подтверждены. Готовая проверенная сборка на данный момент не опубликована.
 
-## Where it stands (2026-11-26)
+## Цель проекта
 
-The measurements below come from one Windows 11 PC with an Intel i9-12900K,
-64 GB of system RAM and a Radeon RX 7900 XTX (24 GB of dedicated video memory).
-Ray tracing was off for these runs.
+Добиться стабильной работы с корректным изображением и **30 FPS или выше без трассировки лучей и генерации кадров** на целевом ПК. Это инженерная цель, а не уже достигнутый результат. Приоритет — уменьшение вычислительных затрат, времени кадра и давления на память, а не искусственное повышение FPS за счёт пропадающих объектов, отключения необходимых операций или ухудшения качества текстур.
 
-| | |
-|---|---|
-| City street, Series S profile, renderer patches 1, 2, 5, 6 and 7 on | about 45 ms a frame (about 22 fps, 44.9 ms in run merge-5) |
-| Same, patches 1, 2, 5 and 6 | 45.6 ms, p95 47 ms |
-| Same, patches 1, 2 and 5 | 47.3 ms (about 21 fps), p95 49 ms |
-| Series X profile, patches 1+2 | about 53 ms (about 19 fps) |
-| Same scene before the patches | 57-75 ms (13-17 fps) |
-| Shaders the title uses that translate | all of them (25,790 of 25,985; the rest are unused geometry shaders) |
-| Memory | about 30 GB of private memory, 10.5 GB of VRAM: **64 GB of RAM recommended** for now |
+### Целевая конфигурация для разработки и тестов
 
-It started at 280 ms a frame in the same scenes three days earlier. What sets
-the frame now is the one thread that submits the title's work to the card
-(about 40 ms); the card itself needs about 36 ms and now waits about 7 ms a frame with nothing queued.
+Это тестовый стенд проекта, а не минимальные системные требования.
 
-### Reports from other GPUs
+| Компонент | Конфигурация |
+| --- | --- |
+| CPU | AMD Ryzen 5 5500 (Zen 3), 4,5 ГГц |
+| GPU | AMD Radeon RX 7700 XT (RDNA 3), 12 ГБ VRAM |
+| RAM | 40 ГБ |
+| ОС | Windows x64 |
+| API | Direct3D 12, Shader Model 6.6 |
+| Основной сценарий тестирования | 1920 × 1080, RT off, фиксированные настройки, без Frame Generation |
 
-| GPU and build | What the contributor observed |
-|---|---|
-| Radeon RX 9060 XT (16 GB), `cd8dfc0` with local changes | In the same Series X interior at 1080p, the game averaged 19.8 fps with ray tracing off and 15.6 fps with it on. Indirect lighting showed white patches and dark smears. [Run settings and results](https://github.com/Belobug/VIctory-Belobug-AMD/issues/313) |
-| GeForce RTX 3090 (24 GB), `a-publier@cd8dfc0` | The prison rendered. Two warm Series S runs averaged 545 and 532 ms per frame. The contributor reported 10.0 and 10.2 GB of VRAM in those runs. [Run settings and results](https://github.com/Belobug/VIctory-Belobug-AMD/issues/333) |
-| Intel Arc B580 (12 GB), revision unreported | Startup and initial menu navigation worked. Further menu interaction slowed to about 0.7 fps before D3D12 device removal. [Crash report](https://github.com/Belobug/VIctory-Belobug-AMD/issues/98) |
+Ориентиры после стабилизации: private memory процесса 25–30 ГБ, рабочее потребление VRAM около 9–10 ГБ, отсутствие длительного роста памяти и сбросов устройства. Это целевые бюджеты, а не гарантии. Поддержку других совместимых GPU и CPU сохраняем, насколько позволяют архитектура и тесты.
 
-The 10.5 GB of VRAM in the RX 7900 XTX table is the usage reported for that run.
-Memory use and frame time depend on the scene and settings. The [ray-tracing notes](docs/fork-ray-tracing.md)
-describe which lighting paths run and the remaining rendering issues.
+## Текущее состояние — 27 ноября 2026 года
 
-### Renderer patches (off by default while they are tested)
+**Экспериментальная разработка.** Базовый код в `a-publier` и `main` не объединён с дополнениями. Последняя накопительная ветка содержит изменения всех предыдущих этапов; скачивать каждый патч по отдельности не требуется.
 
-| Switch | What it does |
-|---|---|
-| `VICTORY_PORT_CONSTANTS=1` | The title's 174 MB constants heap is read by the card where the title writes it: no uploads, no fills |
-| `VICTORY_PORT_DESCRIPTORS=1` | The title's descriptor-table stores are patched (byte-checked) to report the slots they write, instead of a scan of ~600,000 slots a frame |
-| `VICTORY_PORT_CBV=1` | Translated shaders read constant buffers in place as raw bytes (~22,000 fills a frame to none; -4.7 ms) |
-| `VICTORY_PORT_GUARD=1` | The write guards' lock is shared by faults and refreshes, with a claim per 64 KiB block; the submission's planning runs beside it (title threads' waits 29 ms to ~2 ms a frame; -2 ms) |
-| `VICTORY_PORT_JOURNAL=1` | The heaps' records are asked for at the title's submit, and the journal's notes are split into 64 parts with locks of their own (the submit thread's waits ~5 ms + 1 ms to ~0.3 ms; -1 to -3 ms) |
+| Дополнение (UTC) | Этап | Что интегрировано |
+| --- | --- | --- |
+| [06:28 — PR #1](https://github.com/alcatel908-ship-it/Port/pull/1) | P01 | Пулы view/upload-буферов, DirectStorage, освобождение пустых текстурных блоков, кеширование диапазонов дескрипторов |
+| [06:41 — PR #2](https://github.com/alcatel908-ship-it/Port/pull/2) | P02 | Согласование графической и копирующей очередей D3D12 |
+| [06:52 — PR #3](https://github.com/alcatel908-ship-it/Port/pull/3) | P03a | WC-диагностика, проверка кандидатов для устранения copy-back |
+| [07:01 — PR #4](https://github.com/alcatel908-ship-it/Port/pull/4) | P03b | Независимый учёт известных GPU-записей при планировании readback |
+| [07:14 — PR #5](https://github.com/alcatel908-ship-it/Port/pull/5) | P04 / P05a | Альтернативный GPU-карантин буферов и оптимизация CPU tiling/detiling |
 
-### Other switches
+Последняя ревизия с изменениями программного кода на момент обновления: [`b029def`](https://github.com/alcatel908-ship-it/Port/commit/b029def33dcd7f05a91af873254873d5e671f42f). Документация, происхождение патчей, параметры и тест-планы находятся в [docs/port-additions](https://github.com/alcatel908-ship-it/Port/tree/port-addition-2026-11-27_07-14-UTC/docs/port-additions).
 
-| Switch | What it does |
-|---|---|
-| `--console series-s` | The Series S profile: 1080p output, about 5 ms faster, a softer picture |
-| `VICTORY_OUTPUT=1920x1080` | The title renders to that output size itself (Series X profile; about 16 ms less card time) |
-| `VICTORY_FRAME_INTERVAL_MS=16.667` | Lets the title go above 30 fps (menus and videos reach 60; the game's clock stays right) |
-| `VICTORY_AMBIENT_SETTLE` | How fast light settles after walking indoors (on by default, `250,3`; `0` turns it off) |
-| `VICTORY_TEXTURE_STORE=1` | Converted textures kept between runs (about 8 ms a frame for now: off) |
-| `VICTORY_KBM_GTA=1` | Optional GTA V PC-style keyboard and mouse mapping on the stand-in pad: `F2` or `` ` `` (`~`) toggles mouse-look and auto-hides the cursor while locked (`Esc`/`P`/focus loss unlocks and restores it), LMB/RMB = RT/LT, MMB/`C` = R3, `Shift` = A, `Space` = X, `R` = B, `F` = Y, `Tab` = LB, `Q` = RB, `Ctrl` = L3, `E` = D-pad Right, `V` = View. Tune with `VICTORY_MOUSE_SENS` (default `1.0`) and `VICTORY_MOUSE_INVERT_Y=1` (or pass via `scripts\play.ps1 -More @{VICTORY_KBM_GTA='1'}`) |
+### Статус проверки
 
-What is known to be wrong:
+- Изменения сохранены в GitHub; выполнены выборочная построчная сверка патчей и статические проверки применимости.
+- Добавлены и перенесены регрессионные тесты, но сборка накопительной версии, запуск тестов Rust и аппаратные проверки на RX 7700 XT пока не подтверждены.
+- Реальный FPS, p95/p99, расход RAM/VRAM и визуальная корректность Port на целевом ПК пока не измерены.
+- Все пять PR остаются экспериментальными черновиками. Интеграция исходников не означает успешное прохождение тестов.
 
-- Trees, signs and far objects flicker in the distance in some places.
-- Lighting is too bright or too dark after walking indoors, until the title has
-  run for a while; rooms with little direct light are too dark without `-RayTracing`.
-- Textures of what just came into view appear late while the title streams.
-- The first run of a new build stutters while the driver makes pipelines
-  (`victory warm` makes them ahead).
-- Recording a frame in the world makes the title's own watchdog end it.
+### Исторические результаты upstream (не результаты Port)
 
-## How to run it
+В [исходном README](https://github.com/alcatel908-ship-it/Port/blob/4eb6cfdf9e61cb112f1f811344ec0dd309eddd6c/README.md) за 26.11.2026 указаны измерения на i9-12900K, RX 7900 XTX 24 ГБ и 64 ГБ RAM: около 44,9 мс/кадр (примерно 22 FPS) для Series S и 53 мс (примерно 19 FPS) для Series X, RT off, с различными патчами. Это другая конфигурация, и переносить эти цифры на RX 7700 XT нельзя.
 
-You need Windows 10/11 x64, a CPU with AVX2, a Direct3D 12 GPU with shader
-model 6.6 and mesh shaders, Rust (the toolchain is pinned), the MSVC build
-tools, and your own dump of the title.
+## Получение исходников и сборка
+
+Требования исходного проекта: Windows 10/11 x64, AVX2, D3D12 GPU с Shader Model 6.6 и mesh shaders, Rust (версия закреплена в репозитории), MSVC Build Tools. Игровые файлы **не нужны для компиляции и большинства модульных/синтетических тестов**.
 
 ```powershell
-git clone https://github.com/avatarmanz/VIctory-7900XTX
-cd VIctory-7900XTX
-copy victory.example.toml victory.toml      # then set your paths, outside this folder
+git clone https://github.com/alcatel908-ship-it/Port.git
+cd Port
+git switch --track origin/port-addition-2026-11-27_07-14-UTC
 cargo build --locked --profile diag -p victory --features diagnostics
-scripts\play.ps1 -Exe <path of your copy's executable>
 ```
 
-The launcher requests light device removal diagnostics (DRED) by default with
-`-Build diag`. DRED requires `--features diagnostics`. For a release binary
-built with that feature, request DRED with
-`-Build release -More @{VICTORY_D3D12_DRED='light'}`.
+Команда приведена по исходной документации; успешная сборка текущей ветки ещё не подтверждена. Перед запуском нового кода ознакомьтесь с его изменениями.
 
-`scripts\play.ps1 -Safe` leaves out the newest, faster ways; try it first when
-something is wrong. `-RayTracing` turns the title's ray-traced indirect light on.
-
-For PC FSR 4.1.2, set `[paths].fidelityfx_dir` in `victory.toml` or
-`VICTORY_FIDELITYFX_DIR` to the folder containing AMD's signed
-`amd_fidelityfx_upscaler_dx12.dll`. Use the DirectX 12 upscaler in
-`Kits/FidelityFX/signedbin`. [AMD FSR SDK 2.4.0](https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/tree/v2.4.0/Kits/FidelityFX/signedbin)
-
-`scripts\play.ps1 -Exe <path> -Fsr4K quality` selects 2560×1440 input for
-the retail 1.0.2.1 Series X 4K SDR profile. `balanced` selects 2258×1270
-and `performance` selects 1920×1080. All three output 3840×2160. With
-`victory run` directly, set `VICTORY_FSR_4K` to the preset name.
-AMD's SDK offers FSR 4.1.2 for some cards only. Where it does not, the
-newest FSR 3.1 it offers is used in its place and the log says so; its
-picture differs from FSR 4's. Where it offers neither, the run stops
-before the title starts and names the versions that were offered.
-The log reports the provider at context creation and the actual input and
-output sizes at the first successful temporal dispatch. The title profile
-and PC FidelityFX bridge were ported from [DexNom/VIctory](https://github.com/DexNom/VIctory/commit/ab34a8b21477c94da2a6cf07249138e8bc84602e).
-
-On a hybrid-graphics PC, the runtime and offline pipeline checks prefer a
-high-performance adapter with Shader Model 6.6. The runtime logs its adapter
-name, PCI vendor and device IDs, and dedicated VRAM. Set
-`VICTORY_D3D12_ADAPTER` to a zero-based DXGI index or part of the adapter's
-name to select it explicitly. With the launcher, pass
-`-More @{VICTORY_D3D12_ADAPTER='NVIDIA'}`.
-
-Before the first run, ahead of time (both can be stopped and go on later):
+### Тесты без игры
 
 ```powershell
-target\diag\victory.exe shaders <the shader archives>   # every shader translated, minutes
-target\diag\victory.exe warm --used                     # pipelines earlier runs drew with, for a new driver or build
+cargo test -p victory-formats --locked
+cargo test -p victory-gpu --lib --locked -- --test-threads=1
+cargo clippy -p victory-gpu --all-targets --locked -- -D warnings
+cargo clippy -p victory-gpu --all-targets --all-features --locked -- -D warnings
 ```
 
-Commands, debugging switches and upstream's own description:
-[docs/README-fxceless.md](docs/README-fxceless.md). Every `VICTORY_...` switch is
-described in a comment where it is read.
+Для аппаратных D3D12-тестов необходим совместимый GPU/драйвер; тест, пропущенный из-за отсутствия GPU, не считается аппаратной проверкой. Полный протокол, в том числе отдельных ignored-тестов, приведён в документации соответствующих дополнений.
 
-## What is different here
+Для запуска самого приложения с легально полученной пользователем копией игры потребуется настроить `victory.toml` по `victory.example.toml` и указать локальные пути. Подробнее: [исходная инструкция запуска и настройки](https://github.com/alcatel908-ship-it/Port/blob/4eb6cfdf9e61cb112f1f811344ec0dd309eddd6c/README.md#how-to-run-it). Игровые файлы, сохранения и локальные конфигурации не должны попадать в репозиторий или CI-артефакты.
 
-In short; the reasons and the measurements are in [docs/findings.md](docs/findings.md).
+## Экспериментальные переключатели
 
-- **List calls are written down, not carried out, on the title's threads**
-  (`VICTORY_THIN`): eight threads of ours translate them.
-- **Submissions are prepared by a thread of ours and joined**
-  (`VICTORY_ASYNC_SUBMIT`, `VICTORY_JOIN_PARTS`), with what can be spread over
-  threads spread: refreshes, compares (AVX2), descriptor records, landings.
-- **What shaders wrote comes back beside the write guards**, by the dwords that
-  changed, on a thread of its own (`VICTORY_RELAY`, `VICTORY_LAND`).
-- **Buffer fills that need bytes still on the card are done on the card**
-  (`VICTORY_CARD_STEPS`) instead of waiting for it.
-- **The title's writes are caught more cheaply**: one view opened at a fault,
-  blocks that rest, places in the title's code that look before they write.
-- **Textures go up on a copy queue of their own** and a slot shows one only after
-  its upload ran, which also ended a device loss that came every 15 minutes or so.
-- **Boats float**: textures that shaders write and the title's CPU reads go back
-  to title memory (from fxceless and Geckomacabre, on by default here).
-- **Frame record and replay** with per-pass times and shader variants compared
-  turn by turn ([docs/replay.md](docs/replay.md)).
+Следующие параметры относятся к накопительной ветке, а не к неизменённому базовому коду.
 
-## Credits
+| Переменная | Назначение |
+| --- | --- |
+| `VICTORY_VIEW_POOL=1` | Повторное использование view-буферов (P01) |
+| `VICTORY_UPLOAD_POOL=1` | Повторное использование upload-буферов (P01) |
+| `VICTORY_POOL_RECLAIM=1` | Досрочное освобождение пустых текстурных блоков (P01) |
+| `VICTORY_WC_STATS=1` | Статистика копирования по типам памяти (P03a) |
+| `VICTORY_WC_PROBE=1` | Dry-run: оценка кандидатов WC без отключения copy-back |
+| `VICTORY_EXACT_QUARANTINE=1` | Альтернативный пул exact-view с GPU-карантином (P04) |
+| `VICTORY_EXACT_POOL_MB` | Бюджет нового пула: 256/320 МиБ по политике памяти; 0 отключает повторное использование |
+| `VICTORY_SHARED_BUFFER_TRACE=1` | Дополнительная диагностика аллокаций в diagnostics-сборке |
 
-This is a tree of other people's work with more on top. The history is kept, and
-commits taken from elsewhere name the commit and its author.
+Переключатели новых экспериментальных режимов по умолчанию выключены. CPU Detiling P05a и отдельные исправления синхронизации внесены непосредственно в код; для A/B используйте предшествующие коммиты. `WC_NO_BACK` не интегрирован: необходимо подтвердить корректность CPU-видимости, жизненного цикла памяти и учёта GPU-записей. Новый exact-пул сначала проверяется с выключенными старыми пулами, чтобы изолировать эффект.
 
-- **[VIctory](https://github.com/Marvisak/VIctory)** by Marvisak and its
-  contributors: the loader, the runtime services, the Direct3D 12 back end and
-  the shader recompiler.
-- **[fxceless/victory-fork](https://github.com/fxceless/victory-fork)**: the fork
-  this one started from, and the people whose pull requests it carries.
-- **[DexNom/VIctory](https://github.com/DexNom/VIctory)**: ray tracing fixes,
-  cube gradients, sparse textures.
-- **[Belobug/VIctory-Belobug-AMD](https://github.com/Belobug/VIctory-Belobug-AMD)**:
-  the ambient light idea, pipeline workers, and work by romainhedouin.
-- **[FQY55kai/ZJOU-VICTORY](https://github.com/FQY55kai/ZJOU-VICTORY)**.
-- **[myokex/victory-amd](https://github.com/myokex/victory-amd)**: the guard over
-  every view of a page (with Spexivus, joroyt and tightfall), and Joshua Odom's
-  reads into title memory.
-- **Geckomacabre** and **cxy0072019-sketch**: the texture read-back.
-- **[XCL](https://github.com/ivall/xcl)** (GPL-2.0-only) was read for how the same
-  title behaves under another layer; no code of it is here.
-- This fork's changes were made with [Claude Code](https://claude.com/claude-code).
+## Методика разработки и тестирования
 
-## License
+1. Перед каждым этапом обновлять сведения о коммитах, ветках, PR и результатах тестирования доноров. Мониторинг — ежечасный; новые полезные изменения рассматриваются для интеграции.
+2. Сравнивать исходники Port и донорские патчи, проверять зависимости, лицензии, авторство и возможные конфликты. Не переносить вслепую большие экспериментальные наборы.
+3. Создавать накопительную ветку `port-addition-YYYY-MM-DD_HH-mm-UTC` на основе последнего подходящего дополнения; название PR — «Дополнение к Port — YYYY-MM-DD HH:mm UTC». Разделять независимые оптимизации коммитами.
+4. Компилировать и запускать регрессионные тесты до игровых измерений. Для GPU-тестов целевое оборудование — RX 7700 XT. Планируется self-hosted Windows GPU runner; его работоспособность для Port пока не подтверждена.
+5. Сравнивать baseline и новую версию при одинаковом драйвере, профиле, разрешении, маршруте, состоянии shader cache и переключателях. Предпочтительный игровой прогон — 620 секунд, после успешного старта; затем длительный стресс-тест.
+6. Фиксировать FPS, median/p95/p99 frametime, задержки CPU/GPU, private bytes, VRAM, трафик copy-back, device removal и визуальные дефекты. Не считать серые кадры, отсутствующую геометрию или синтетические ускорения подтверждённым игровым результатом.
+7. Не объединять экспериментальные PR автоматически с базовыми ветками до проверки. Сохранять возможность отката и результаты отрицательных экспериментов.
 
-GPL-3.0-or-later, as VIctory. See [LICENSE](LICENSE); the one file that is not
-covered is named in [docs/asset-policy.md](docs/asset-policy.md).
+## Roadmap
+
+| Направление | Статус |
+| --- | --- |
+| P00 — сравнение архитектур и доноров | Продолжается |
+| P01–P04 — память, пулы, синхронизация, WC-диагностика | Исходники интегрированы; проверка ожидается |
+| P05a — CPU tiling/detiling | Исходники интегрированы; проверка ожидается |
+| P05b — partial detiling и compact staging | План |
+| P06 — гибридные GPU-буферы и устранение лишних передач | План |
+| P07 — оптимизация дескрипторных куч и подготовки команд | План |
+| P08 — корректность изображения, текстур, освещения и геометрии | План |
+| P09 — профилирование Zen 3 / RDNA 3 и длительный A/B | План |
+
+Сборка и регрессии имеют приоритет над накоплением новых непроверенных изменений. RT остаётся отдельным экспериментальным направлением.
+
+## Документация и архитектура
+
+- [Исходное описание и переключатели VIctory](https://github.com/alcatel908-ship-it/Port/blob/4eb6cfdf9e61cb112f1f811344ec0dd309eddd6c/README.md)
+- [Технические результаты исходного форка](docs/findings.md)
+- [Frame record / replay](docs/replay.md)
+- [Ray tracing](docs/fork-ray-tracing.md)
+- [Исходная документация fxceless](docs/README-fxceless.md)
+- [Политика игровых данных и ресурсов](docs/asset-policy.md)
+
+Ключевые модули: `victory-loader` (загрузка), `victory-hle` (системные сервисы), `victory-gpu` (D3D12), `victory-shader` (трансляция шейдеров), `victory-formats` (форматы и текстуры), `victory-pipeline` (пайплайны).
+
+## Авторы и источники
+
+Port основан на работе сообщества, а не является независимой реализацией с нуля. История Git, исходные лицензии и уведомления об авторстве сохраняются.
+
+- [Marvisak/VIctory](https://github.com/Marvisak/VIctory) — исходный проект и его участники.
+- [Belobug/VIctory-Belobug-AMD](https://github.com/Belobug/VIctory-Belobug-AMD) — непосредственная база Port; дополнительные работы участников PR #375, #428, #476 и #451, в том числе MamaLeVrai, icecreammule277-dot, BE29ZZ, ToolxMaster и Miquella135.
+- [avatarmanz/VIctory-7900XTX](https://github.com/avatarmanz/VIctory-7900XTX) — исходные оптимизации и пулы PR #433.
+- [XaviFortes/VIctory-RDNA](https://github.com/XaviFortes/VIctory-RDNA) — оптимизация buffer-sweep.
+- [iLucasRT/VInAMD](https://github.com/iLucasRT/VInAMD) — управление текстурным пулом и CPU tiling/detiling (с сохранением ссылок на оригинальные коммиты).
+- [fxceless/victory-fork](https://github.com/fxceless/victory-fork), [DexNom/VIctory](https://github.com/DexNom/VIctory), [FQY55kai/ZJOU-VICTORY](https://github.com/FQY55kai/ZJOU-VICTORY), [myokex/victory-amd](https://github.com/myokex/victory-amd), Geckomacabre, cxy0072019-sketch и остальные авторы, перечисленные в [исходных Credits](https://github.com/alcatel908-ship-it/Port/blob/4eb6cfdf9e61cb112f1f811344ec0dd309eddd6c/README.md#credits).
+- [Grimkaaah/Victory-Grimkaaah](https://github.com/Grimkaaah/Victory-Grimkaaah), [AntoninMichelq/VIctory-forkAMD](https://github.com/AntoninMichelq/VIctory-forkAMD) и [XCL](https://github.com/xcl-dev/xcl) — также изучаемые реализации. Указание проекта не означает, что его код уже включён в Port.
+
+Точные SHA, зависимости, авторы и ограничения отдельных дополнений приведены в их PR и документации. Перенос сторонних наработок выполняется с учётом применимых лицензий и предоставленных разрешений. Условия лицензий и уведомления об авторстве сохраняются.
+
+## Лицензия и ограничения
+
+GPL-3.0-or-later, как в исходном проекте. См. [LICENSE](LICENSE) и [политику ресурсов](docs/asset-policy.md). Сторонние компоненты сохраняют соответствующие лицензионные условия.
+
+Репозиторий не предназначен для распространения игровых файлов, проприетарного кода игры или её ресурсов. Проект не аффилирован с разработчиком или издателем игры. Экспериментальные ветки предоставляются без гарантий стабильности или производительности.
