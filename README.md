@@ -1,18 +1,22 @@
 # Port
 
-**Экспериментальный форк VIctory для Windows x64, ориентированный на AMD RDNA 3 и доступные настольные ПК.**
+**Port — проект оптимизации VIctory для Windows x64, с приоритетом AMD RDNA 3, Zen 3 и эффективного использования памяти.**
 
 Port — исследовательский проект по оптимизации слоя совместимости Xbox Series → Windows / Direct3D 12. Мы изучаем реализации VIctory и других проектов, переносим совместимые улучшения, адаптируем их под целевую конфигурацию и проверяем корректность работы.
 
 *English summary: Port is an experimental VIctory fork focused on RDNA 3, Zen 3, memory efficiency and reproducible performance testing. It contains no game files or proprietary game assets. The development branches are not validated releases.*
 
-[Последнее накопительное дополнение](https://github.com/alcatel908-ship-it/Port/pull/5) · [Все дополнения](https://github.com/alcatel908-ship-it/Port/pulls) · [Исходный README и результаты upstream](https://github.com/alcatel908-ship-it/Port/blob/4eb6cfdf9e61cb112f1f811344ec0dd309eddd6c/README.md)
+[Актуальные исходники](https://github.com/alcatel908-ship-it/Port/tree/port-addition-2026-11-27_07-14-UTC) · [Последнее дополнение (PR #5)](https://github.com/alcatel908-ship-it/Port/pull/5) · [Все дополнения](https://github.com/alcatel908-ship-it/Port/pulls) · [Исходный README и результаты upstream](https://github.com/alcatel908-ship-it/Port/blob/4eb6cfdf9e61cb112f1f811344ec0dd309eddd6c/README.md)
+
+> **Статус:** активная экспериментальная разработка. Накопительная версия включает пять дополнений; компиляция, аппаратные тесты и игровой FPS пока не подтверждены. Готовая проверенная сборка на данный момент не опубликована.
 
 ## Цель проекта
 
 Добиться стабильной работы с корректным изображением и **30 FPS или выше без трассировки лучей и генерации кадров** на целевом ПК. Это инженерная цель, а не уже достигнутый результат. Приоритет — уменьшение вычислительных затрат, времени кадра и давления на память, а не искусственное повышение FPS за счёт пропадающих объектов, отключения необходимых операций или ухудшения качества текстур.
 
-### Целевая конфигурация
+### Целевая конфигурация для разработки и тестов
+
+Это тестовый стенд проекта, а не минимальные системные требования.
 
 | Компонент | Конфигурация |
 | --- | --- |
@@ -37,7 +41,7 @@ Port — исследовательский проект по оптимизац
 | [07:01 — PR #4](https://github.com/alcatel908-ship-it/Port/pull/4) | P03b | Независимый учёт известных GPU-записей при планировании readback |
 | [07:14 — PR #5](https://github.com/alcatel908-ship-it/Port/pull/5) | P04 / P05a | Альтернативный GPU-карантин буферов и оптимизация CPU tiling/detiling |
 
-Последняя ревизия исходного кода на момент обновления: [`b029def`](https://github.com/alcatel908-ship-it/Port/commit/b029def33dcd7f05a91af873254873d5e671f42f). Документация, происхождение патчей, параметры и тест-планы находятся в [docs/port-additions](https://github.com/alcatel908-ship-it/Port/tree/port-addition-2026-11-27_07-14-UTC/docs/port-additions).
+Последняя ревизия с изменениями программного кода на момент обновления: [`b029def`](https://github.com/alcatel908-ship-it/Port/commit/b029def33dcd7f05a91af873254873d5e671f42f). Документация, происхождение патчей, параметры и тест-планы находятся в [docs/port-additions](https://github.com/alcatel908-ship-it/Port/tree/port-addition-2026-11-27_07-14-UTC/docs/port-additions).
 
 ### Статус проверки
 
@@ -141,7 +145,7 @@ Port основан на работе сообщества, а не являет
 - [fxceless/victory-fork](https://github.com/fxceless/victory-fork), [DexNom/VIctory](https://github.com/DexNom/VIctory), [FQY55kai/ZJOU-VICTORY](https://github.com/FQY55kai/ZJOU-VICTORY), [myokex/victory-amd](https://github.com/myokex/victory-amd), Geckomacabre, cxy0072019-sketch и остальные авторы, перечисленные в [исходных Credits](https://github.com/alcatel908-ship-it/Port/blob/4eb6cfdf9e61cb112f1f811344ec0dd309eddd6c/README.md#credits).
 - [Grimkaaah/Victory-Grimkaaah](https://github.com/Grimkaaah/Victory-Grimkaaah), [AntoninMichelq/VIctory-forkAMD](https://github.com/AntoninMichelq/VIctory-forkAMD) и [XCL](https://github.com/xcl-dev/xcl) — также изучаемые реализации. Указание проекта не означает, что его код уже включён в Port.
 
-Точные SHA, зависимости, авторы и ограничения отдельных дополнений приведены в их PR и документации. Владелец Port сообщает о получении письменных разрешений авторов; условия конкретных разрешений должны соблюдаться при переносе кода. Это не отменяет обязательств соответствующих лицензий.
+Точные SHA, зависимости, авторы и ограничения отдельных дополнений приведены в их PR и документации. Перенос сторонних наработок выполняется с учётом применимых лицензий и предоставленных разрешений. Условия лицензий и уведомления об авторстве сохраняются.
 
 ## Лицензия и ограничения
 
